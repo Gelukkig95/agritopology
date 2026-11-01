@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "torch-morph-rcc8: Differentiable GPU RCC-8 Spatial Logic and Morphological Operators for PyTorch"
+authors:
+  - family-names: "Kim"
+    given-names: "Jinwon"
+repository-code: "https://github.com/Gelukkig95/torch-morph-rcc8"
+url: "https://github.com/Gelukkig95/torch-morph-rcc8"
+version: 0.1.0
+date-released: 2026-11-02
+license: MIT
+keywords:
+  - "rcc8"
+  - "spatial-reasoning"
+  - "mathematical-morphology"
+  - "max-tree"
+  - "neuro-symbolic"
+  - "pytorch"
