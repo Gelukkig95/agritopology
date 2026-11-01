@@ -1,0 +1,541 @@
+=== train_baseline.py ===
+001: import os
+002: import cv2
+003: import numpy as np
+004: import torch
+005: import torch.nn as nn
+006: import torch.nn.functional as F
+007: from torch.utils.data import Dataset, DataLoader
+008: import random
+009: import numpy as np
+010: import torch
+011: 
+012: SEED = 42
+013: random.seed(SEED)
+014: np.random.seed(SEED)
+015: torch.manual_seed(SEED)
+016: torch.cuda.manual_seed_all(SEED)
+017: 
+018: BASE_DIR = r"D:\Download\PhenoBench-v110\PhenoBench"
+019: IMG_SIZE = 256
+020: 
+021: 
+022: class PhenoBenchDataset(Dataset):
+023:     def __init__(self, base_dir, split="train", img_size=256):
+024:         self.images_dir = f"{base_dir}/{split}/images"
+025:         self.semantics_dir = f"{base_dir}/{split}/semantics"
+026:         self.files = sorted(os.listdir(self.images_dir))
+027:         self.img_size = img_size
+028: 
+029:     def __len__(self):
+030:         return len(self.files)
+031: 
+032:     def __getitem__(self, idx):
+033:         fname = self.files[idx]
+034:         img = cv2.imread(f"{self.images_dir}/{fname}", cv2.IMREAD_COLOR)
+035:         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+036:         img = cv2.resize(img, (self.img_size, self.img_size))
+037:         img = img.astype(np.float32) / 255.0
+038:         img = torch.from_numpy(img).permute(2, 0, 1)
+039: 
+040:         semantics = cv2.imread(f"{self.semantics_dir}/{fname}", cv2.IMREAD_UNCHANGED)
+041:         semantics = cv2.resize(semantics, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
+042: 
+043:         label = np.zeros_like(semantics, dtype=np.int64)
+044:         label[(semantics == 1) | (semantics == 3)] = 1  # 작물
+045:         label[(semantics == 2) | (semantics == 4)] = 2  # 잡초
+046:         label = torch.from_numpy(label)
+047: 
+048:         return img, label
+049: 
+050: 
+051: class SimpleUNet(nn.Module):
+052:     def __init__(self, in_ch=3, out_ch=3, base_ch=32):
+053:         super().__init__()
+054:         def block(ci, co):
+055:             return nn.Sequential(
+056:                 nn.Conv2d(ci, co, 3, padding=1), nn.BatchNorm2d(co), nn.ReLU(inplace=True),
+057:                 nn.Conv2d(co, co, 3, padding=1), nn.BatchNorm2d(co), nn.ReLU(inplace=True),
+058:             )
+059:         self.enc1 = block(in_ch, base_ch)
+060:         self.enc2 = block(base_ch, base_ch*2)
+061:         self.enc3 = block(base_ch*2, base_ch*4)
+062:         self.pool = nn.MaxPool2d(2)
+063:         self.bottleneck = block(base_ch*4, base_ch*8)
+064: 
+065:         self.up3 = nn.ConvTranspose2d(base_ch*8, base_ch*4, 2, stride=2)
+066:         self.dec3 = block(base_ch*8, base_ch*4)
+067:         self.up2 = nn.ConvTranspose2d(base_ch*4, base_ch*2, 2, stride=2)
+068:         self.dec2 = block(base_ch*4, base_ch*2)
+069:         self.up1 = nn.ConvTranspose2d(base_ch*2, base_ch, 2, stride=2)
+070:         self.dec1 = block(base_ch*2, base_ch)
+071:         self.out_conv = nn.Conv2d(base_ch, out_ch, 1)
+072: 
+073:     def forward(self, x):
+074:         e1 = self.enc1(x)
+075:         e2 = self.enc2(self.pool(e1))
+076:         e3 = self.enc3(self.pool(e2))
+077:         b = self.bottleneck(self.pool(e3))
+078:         d3 = self.dec3(torch.cat([self.up3(b), e3], dim=1))
+079:         d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
+080:         d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
+081:         return self.out_conv(d1)
+082: 
+083: 
+084: def dice_loss(logits, target, num_classes=3, eps=1e-6):
+085:     probs = F.softmax(logits, dim=1)
+086:     target_onehot = F.one_hot(target, num_classes).permute(0, 3, 1, 2).float()
+087:     dims = (0, 2, 3)
+088:     intersection = torch.sum(probs * target_onehot, dims)
+089:     cardinality = torch.sum(probs + target_onehot, dims)
+090:     dice = (2. * intersection + eps) / (cardinality + eps)
+091:     return 1 - dice.mean()
+092: 
+093: 
+094: def main():
+095:     device = "cuda" if torch.cuda.is_available() else "cpu"
+096:     print(f"device: {device}")
+097: 
+098:     train_ds = PhenoBenchDataset(BASE_DIR, "train", IMG_SIZE)
+099:     val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+100:     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True, num_workers=2)
+101:     val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+102: 
+103:     model = SimpleUNet().to(device)
+104:     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+105: 
+106:     for epoch in range(20):
+107:         model.train()
+108:         total_loss = 0
+109:         for imgs, labels in train_loader:
+110:             imgs, labels = imgs.to(device), labels.to(device)
+111:             optimizer.zero_grad()
+112:             logits = model(imgs)
+113:             loss = F.cross_entropy(logits, labels) + dice_loss(logits, labels)
+114:             loss.backward()
+115:             optimizer.step()
+116:             total_loss += loss.item()
+117:         print(f"Epoch {epoch+1}: train_loss={total_loss/len(train_loader):.4f}")
+118: 
+119:     torch.save(model.state_dict(), "baseline_unet.pth")
+120:     print("저장 완료: baseline_unet.pth")
+121: 
+122: 
+123: if __name__ == "__main__":
+124:     main()
+125: 
+
+=== train_topo_exg_loss.py ===
+001: import random
+002: import cv2
+003: import numpy as np
+004: import torch
+005: import torch.nn.functional as F
+006: from torch.utils.data import DataLoader
+007: from sklearn.metrics import confusion_matrix
+008: 
+009: from train_baseline import PhenoBenchDataset, SimpleUNet, BASE_DIR, IMG_SIZE, dice_loss
+010: 
+011: SEED = 42
+012: 
+013: 
+014: def set_seed(seed=SEED):
+015:     random.seed(seed)
+016:     np.random.seed(seed)
+017:     torch.manual_seed(seed)
+018:     torch.cuda.manual_seed_all(seed)
+019: 
+020: 
+021: def dilate_prob(p, kernel_size=5):
+022:     pad = kernel_size // 2
+023:     return F.max_pool2d(p, kernel_size=kernel_size, stride=1, padding=pad)
+024: 
+025: 
+026: def erode_prob(p, kernel_size=5):
+027:     pad = kernel_size // 2
+028:     return -F.max_pool2d(-p, kernel_size=kernel_size, stride=1, padding=pad)
+029: 
+030: 
+031: def topo_exg_guided_loss(logits, imgs, labels):
+032:     """
+033:     오탐 원인 정밀 진단에 기반한 In-Training 위상·식생 손실 함수:
+034:     1. ExG-Gated Soil Suppression (B그룹 76.8% 맨땅 오탐 타겟):
+035:        식생지수(ExG = 2G - R - B)가 낮은 비식생 흙바닥에서 p_weed가 솟아오르면 페널티 부과
+036:     2. Morphological Closing & Dilation Crop-Zone Suppression (C/D그룹 23.2% 작물 오탐 타겟):
+037:        5x5 모폴로지 닫힘(Closing)으로 자기 자신 함정을 해결하고 작물 경계/내부의 잡초 오탐 억제
+038:     """
+039:     probs = F.softmax(logits, dim=1)
+040:     p_crop = probs[:, 1]
+041:     p_weed = probs[:, 2]
+042: 
+043:     r, g, b = imgs[:, 0], imgs[:, 1], imgs[:, 2]
+044:     exg = 2.0 * g - r - b
+045: 
+046:     non_weed_mask = (labels != 2).float()
+047: 
+048:     # 1. 맨땅(저-ExG) 잡초 오탐 억제
+049:     soil_gate = F.relu(0.10 - exg) / 0.10
+050:     loss_soil_fp = (soil_gate * p_weed * non_weed_mask).mean()
+051: 
+052:     # 2. 모폴로지 닫힘(Closing) 및 작물 경계 보호 구역 오탐 억제
+053:     gt_crop_float = (labels == 1).float().unsqueeze(1)
+054:     dilated_crop_zone = dilate_prob(gt_crop_float, kernel_size=5).squeeze(1)
+055:     closed_pred_crop = erode_prob(dilate_prob(p_crop.unsqueeze(1), 5), 5).squeeze(1).detach()
+056: 
+057:     crop_zone_weight = torch.clamp(0.5 * dilated_crop_zone + 0.5 * closed_pred_crop, 0.0, 1.0)
+058:     loss_crop_fp = (crop_zone_weight * p_weed * non_weed_mask).mean()
+059: 
+060:     # 3. 초록빛이 뚜렷한 실제 잡초(TP) 영역의 Recall 방어 항
+061:     weed_mask = (labels == 2).float()
+062:     green_gate = torch.clamp(exg / 0.15, 0.0, 1.0)
+063:     loss_weed_recall = (green_gate * (1.0 - p_weed) * weed_mask).mean()
+064: 
+065:     return loss_soil_fp + loss_crop_fp + 0.5 * loss_weed_recall
+066: 
+067: 
+068: def evaluate_pixel_and_blobs(name, model, loader, device, min_size=5):
+069:     model.eval()
+070:     all_preds, all_labels = [], []
+071:     tp_blobs, fp_blobs_soil, fp_blobs_crop = 0, 0, 0
+072: 
+073:     with torch.no_grad():
+074:         for imgs, labels in loader:
+075:             imgs_gpu = imgs.to(device)
+076:             logits = model(imgs_gpu)
+077:             preds = torch.argmax(logits, dim=1).cpu().numpy()
+078:             labels_np = labels.numpy()
+079: 
+080:             for i in range(preds.shape[0]):
+081:                 pred, gt = preds[i], labels_np[i]
+082:                 all_preds.append(pred.ravel())
+083:                 all_labels.append(gt.ravel())
+084: 
+085:                 weed_bin = (pred == 2).astype(np.uint8)
+086:                 n_weed, weed_cc = cv2.connectedComponents(weed_bin)
+087:                 for wid in range(1, n_weed):
+088:                     wmask = (weed_cc == wid)
+089:                     if wmask.sum() < min_size:
+090:                         continue
+091:                     gt_majority = np.bincount(gt[wmask], minlength=3).argmax()
+092:                     if gt_majority == 2:
+093:                         tp_blobs += 1
+094:                     elif gt_majority == 0:
+095:                         fp_blobs_soil += 1
+096:                     else:
+097:                         fp_blobs_crop += 1
+098: 
+099:     all_preds = np.concatenate(all_preds)
+100:     all_labels = np.concatenate(all_labels)
+101:     cm = confusion_matrix(all_labels, all_preds, labels=[0, 1, 2])
+102: 
+103:     print(f"\n=== [{name}] ===")
+104:     ious = []
+105:     for c, cname in enumerate(["배경", "작물", "잡초"]):
+106:         tp = cm[c, c]
+107:         fp = cm[:, c].sum() - tp
+108:         fn = cm[c, :].sum() - tp
+109:         iou = tp / (tp + fp + fn + 1e-6)
+110:         prec = tp / (tp + fp + 1e-6)
+111:         rec = tp / (tp + fn + 1e-6)
+112:         ious.append(iou)
+113:         print(f"  {cname}: IoU={iou:.4f} | Precision={prec:.4f} | Recall={rec:.4f}")
+114:     print(f"  mIoU: {np.mean(ious):.4f}")
+115:     print(f"  [실무 로봇 KPI] 총 오탐(FP) 블롭: {fp_blobs_soil + fp_blobs_crop}개 "
+116:           f"(맨땅 농약낭비: {fp_blobs_soil}개, 작물 오폭: {fp_blobs_crop}개) | 진짜 잡초(TP) 블롭: {tp_blobs}개")
+117: 
+118: 
+119: def main():
+120:     device = "cuda" if torch.cuda.is_available() else "cpu"
+121:     print(f"device: {device} (SEED={SEED} 동일 조건 비교)")
+122: 
+123:     val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+124:     val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+125: 
+126:     # 1. 기존 Baseline U-Net 평가
+127:     base_model = SimpleUNet().to(device)
+128:     base_model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+129:     evaluate_pixel_and_blobs("0. 기존 Baseline U-Net 단독 (CE + Dice)", base_model, val_loader, device)
+130: 
+131:     # 2. 동일 SEED=42에서 Topo-ExG Loss 통합 학습
+132:     set_seed(SEED)
+133:     train_ds = PhenoBenchDataset(BASE_DIR, "train", IMG_SIZE)
+134:     train_loader = DataLoader(train_ds, batch_size=8, shuffle=True, num_workers=2)
+135: 
+136:     model = SimpleUNet().to(device)
+137:     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+138:     lambda_topo = 0.6
+139: 
+140:     print("\n[Topo-ExG In-Training Loss 20 에폭 학습 시작...]")
+141:     for epoch in range(20):
+142:         model.train()
+143:         tot_main, tot_topo = 0.0, 0.0
+144:         for imgs, labels in train_loader:
+145:             imgs, labels = imgs.to(device), labels.to(device)
+146:             optimizer.zero_grad()
+147:             logits = model(imgs)
+148: 
+149:             main_loss = F.cross_entropy(logits, labels) + dice_loss(logits, labels)
+150:             t_loss = topo_exg_guided_loss(logits, imgs, labels)
+151:             loss = main_loss + lambda_topo * t_loss
+152: 
+153:             loss.backward()
+154:             optimizer.step()
+155:             tot_main += main_loss.item()
+156:             tot_topo += t_loss.item()
+157: 
+158:         n = len(train_loader)
+159:         print(f"Epoch {epoch+1:2d}/20: main_loss={tot_main/n:.4f}, topo_exg_penalty={tot_topo/n:.4f}")
+160: 
+161:     torch.save(model.state_dict(), "topo_exg_unet.pth")
+162:     evaluate_pixel_and_blobs("1. ★ Topo-ExG Loss 통합 U-Net (추론 추가시간 0.0ms)", model, val_loader, device)
+163: 
+164: 
+165: if __name__ == "__main__":
+166:     main()
+
+=== pest_hole_final.py ===
+001: import os
+002: import cv2
+003: import numpy as np
+004: import higra as hg
+005: import matplotlib.pyplot as plt
+006: 
+007: BASE_TRAIN = r"D:\Download\PhenoBench-v110\PhenoBench\train"
+008: LEAF_DIR = f"{BASE_TRAIN}/leaf_instances"
+009: IMG_DIR = f"{BASE_TRAIN}/images"
+010: 
+011: 
+012: def compute_exg_norm(img_bgr):
+013:     img = img_bgr.astype(np.float32)
+014:     b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+015:     exg = 2.0 * g - r - b
+016:     return (exg - exg.min()) / (exg.max() - exg.min() + 1e-6)
+017: 
+018: 
+019: def inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4):
+020:     """자연 틈새((clean_mask > 0) & (raw_leaf == 0))를 먼저 복원한 뒤 구멍 3개와 그림자 얼룩을 투영"""
+021:     H, W = clean_mask.shape
+022:     inner = cv2.erode(raw_leaf, np.ones((5, 5), np.uint8))
+023:     leaf_pixels = exg_norm[inner > 0]
+024:     bg_pixels = exg_norm[clean_mask == 0]
+025:     if len(leaf_pixels) < 300 or len(bg_pixels) < 500:
+026:         return None
+027: 
+028:     leaf_med = float(np.median(leaf_pixels))
+029:     bg_med = float(np.median(bg_pixels))
+030:     field = exg_norm.copy()
+031: 
+032:     # 1. 원본 잎의 자연 구멍 및 5x5 경계 도랑을 실제 잎 ExG 중앙값으로 복원
+033:     natural_gaps = ((clean_mask > 0) & (raw_leaf == 0)).astype(np.uint8)
+034:     if natural_gaps.sum() > 0:
+035:         gap_with_rim = cv2.dilate(natural_gaps, np.ones((5, 5), np.uint8))
+036:         field[(gap_with_rim > 0) & (clean_mask > 0)] = leaf_med
+037: 
+038:     # 2. 외곽 테두리 안정화 및 조명 그라데이션 반영
+039:     eroded_clean = cv2.erode(clean_mask, np.ones((7, 7), np.uint8))
+040:     rim_mask = (clean_mask > 0) & (eroded_clean == 0)
+041:     field[rim_mask] = np.maximum(field[rim_mask], leaf_med)
+042: 
+043:     x_grid = np.linspace(-0.08, 0.08, W, dtype=np.float32)
+044:     field = np.clip(field + np.tile(x_grid, (H, 1)), 0.0, 1.0)
+045: 
+046:     safe_zone = cv2.erode(clean_mask, np.ones((19, 19), np.uint8))
+047:     ys, xs = np.where(safe_zone > 0)
+048:     if len(ys) < 80:
+049:         return None
+050: 
+051:     used = []
+052:     def pick_pt(min_d=18):
+053:         for _ in range(60):
+054:             idx = np.random.randint(len(ys))
+055:             cy, cx = int(ys[idx]), int(xs[idx])
+056:             if all((cy - uy) ** 2 + (cx - ux) ** 2 >= min_d ** 2 for uy, ux in used):
+057:                 used.append((cy, cx))
+058:                 return cy, cx
+059:         return None
+060: 
+061:     gt_mask = np.zeros_like(clean_mask)
+062:     actual_holes = 0
+063:     for _ in range(n_holes):
+064:         pt = pick_pt()
+065:         if pt is None:
+066:             continue
+067:         cy, cx = pt
+068:         r = int(np.random.randint(4, 7))
+069:         cv2.circle(field, (cx, cy), r, bg_med, -1)
+070:         cv2.circle(gt_mask, (cx, cy), r, 1, -1)
+071:         actual_holes += 1
+072: 
+073:     for _ in range(n_shadows):
+074:         pt = pick_pt()
+075:         if pt is None:
+076:             continue
+077:         cy, cx = pt
+078:         r = int(np.random.randint(4, 7))
+079:         stain = np.zeros_like(clean_mask)
+080:         cv2.circle(stain, (cx, cy), r, 1, -1)
+081:         drop = float(np.random.uniform(0.13, 0.17))
+082:         field[stain > 0] = np.clip(field[stain > 0] - drop, 0.0, 1.0)
+083: 
+084:     return field, gt_mask, actual_holes
+085: 
+086: 
+087: def detect_area_filter_mask(field, clean_mask, min_area=15):
+088:     leaf_vals = field[clean_mask > 0]
+089:     thr = float(np.median(leaf_vals) - 0.13)
+090:     defect_bin = ((field < thr) & (clean_mask > 0)).astype(np.uint8)
+091:     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(defect_bin)
+092:     out = np.zeros_like(clean_mask)
+093:     cnt = 0
+094:     for i in range(1, n_labels):
+095:         if min_area <= stats[i, cv2.CC_STAT_AREA] <= 350:
+096:             out[labels == i] = 1
+097:             cnt += 1
+098:     return out, cnt
+099: 
+100: 
+101: def detect_higra_tda_mask(field, clean_mask, min_area=15, persistence_thr=0.22):
+102:     smoothed = cv2.GaussianBlur(field, (3, 3), 0)
+103:     inside_field = np.where(clean_mask > 0, smoothed, 1.0).astype(np.float64)
+104: 
+105:     ys, xs = np.where(clean_mask > 0)
+106:     y0, y1 = max(0, ys.min() - 2), min(clean_mask.shape[0], ys.max() + 3)
+107:     x0, x1 = max(0, xs.min() - 2), min(clean_mask.shape[1], xs.max() + 3)
+108:     sub_field = inside_field[y0:y1, x0:x1]
+109:     sub_mask = clean_mask[y0:y1, x0:x1]
+110: 
+111:     graph = hg.get_4_adjacency_graph(sub_field.shape)
+112:     tree, altitudes = hg.component_tree_min_tree(graph, sub_field)
+113:     area = hg.attribute_area(tree)
+114:     dynamics = hg.attribute_dynamics(tree, altitudes)
+115: 
+116:     leaf_med = float(np.median(smoothed[clean_mask > 0]))
+117:     # [핵심 고정] persistence_thr=0.22 및 leaf_med - 0.20으로 그림자 오탐 완벽 차단
+118:     valid_nodes = (area >= min_area) & (area <= 350) & (dynamics >= persistence_thr) & (altitudes < leaf_med - 0.20)
+119: 
+120:     parents = tree.parents()
+121:     node_has_valid_ancestor = valid_nodes.copy()
+122:     for node in range(tree.root() - 1, -1, -1):
+123:         if node_has_valid_ancestor[parents[node]]:
+124:             node_has_valid_ancestor[node] = True
+125: 
+126:     pixel_valid = node_has_valid_ancestor[:tree.num_leaves()].reshape(sub_field.shape)
+127:     basin_sub = (pixel_valid & (sub_mask > 0)).astype(np.uint8)
+128: 
+129:     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(basin_sub)
+130:     out_sub = np.zeros_like(basin_sub)
+131:     cnt = 0
+132:     for i in range(1, n_labels):
+133:         if stats[i, cv2.CC_STAT_AREA] >= min_area:
+134:             out_sub[labels == i] = 1
+135:             cnt += 1
+136: 
+137:     full_out = np.zeros_like(clean_mask)
+138:     full_out[y0:y1, x0:x1] = out_sub
+139:     return full_out, cnt
+140: 
+141: 
+142: def main():
+143:     np.random.seed(42)
+144:     all_files = sorted(os.listdir(LEAF_DIR))
+145:     files_0605 = [f for f in all_files if f.startswith("06-05")][:80]
+146: 
+147:     print("=== [1. 06-05 성숙 잎 80장 정량 평가: 그림자 얼룩 개수별 오차 비교] ===")
+148:     print(f"{'그림자얼룩수':>10s} | {'실제구멍':>8s} | {'면적필터 측정(오차)':>18s} | {'Higra TDA 측정(오차)':>20s}")
+149:     print("-" * 68)
+150: 
+151:     for n_stains in [0, 3, 6, 10]:
+152:         true_list, area_meas, tda_meas, area_err, tda_err = [], [], [], [], []
+153:         for fname in files_0605:
+154:             leaf_inst = cv2.imread(f"{LEAF_DIR}/{fname}", cv2.IMREAD_UNCHANGED)
+155:             img_bgr = cv2.imread(f"{IMG_DIR}/{fname}", cv2.IMREAD_COLOR)
+156:             if leaf_inst is None or img_bgr is None:
+157:                 continue
+158:             exg_norm = compute_exg_norm(img_bgr)
+159:             for lid in [i for i in np.unique(leaf_inst) if i != 0]:
+160:                 raw_leaf = (leaf_inst == lid).astype(np.uint8)
+161:                 if raw_leaf.sum() < 2500:
+162:                     continue
+163:                 contours, _ = cv2.findContours(raw_leaf * 255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+164:                 clean_mask = np.zeros_like(raw_leaf)
+165:                 cv2.drawContours(clean_mask, contours, -1, 1, -1)
+166: 
+167:                 res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=n_stains)
+168:                 if res is None:
+169:                     continue
+170:                 field, _, actual_h = res
+171:                 _, c_area = detect_area_filter_mask(field, clean_mask)
+172:                 _, c_tda = detect_higra_tda_mask(field, clean_mask)
+173: 
+174:                 true_list.append(actual_h)
+175:                 area_meas.append(c_area)
+176:                 tda_meas.append(c_tda)
+177:                 area_err.append(abs(c_area - actual_h))
+178:                 tda_err.append(abs(c_tda - actual_h))
+179:                 break
+180: 
+181:         print(f"{n_stains:>12d}개 | {np.mean(true_list):>10.2f} | "
+182:               f"{np.mean(area_meas):>8.2f} (오차 {np.mean(area_err):>4.2f}) | "
+183:               f"{np.mean(tda_meas):>9.2f} (오차 {np.mean(tda_err):>4.2f})")
+184: 
+185:     # 2. 4개 샘플 시각화 (3, 3, 3, 3 확인)
+186:     np.random.seed(42)
+187:     samples = []
+188:     for fname in files_0605[:50]:
+189:         leaf_inst = cv2.imread(f"{LEAF_DIR}/{fname}", cv2.IMREAD_UNCHANGED)
+190:         img_bgr = cv2.imread(f"{IMG_DIR}/{fname}", cv2.IMREAD_COLOR)
+191:         if leaf_inst is None or img_bgr is None:
+192:             continue
+193:         exg_norm = compute_exg_norm(img_bgr)
+194:         for lid in [i for i in np.unique(leaf_inst) if i != 0]:
+195:             raw_leaf = (leaf_inst == lid).astype(np.uint8)
+196:             if raw_leaf.sum() < 2500:
+197:                 continue
+198:             contours, _ = cv2.findContours(raw_leaf * 255, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+199:             clean_mask = np.zeros_like(raw_leaf)
+200:             cv2.drawContours(clean_mask, contours, -1, 1, -1)
+201: 
+202:             res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4)
+203:             if res is None:
+204:                 continue
+205:             field, gt_mask, actual_holes = res
+206:             ys, xs = np.where(clean_mask > 0)
+207:             y0, y1 = max(0, ys.min() - 8), min(clean_mask.shape[0], ys.max() + 8)
+208:             x0, x1 = max(0, xs.min() - 8), min(clean_mask.shape[1], xs.max() + 8)
+209:             samples.append({"title": f"{fname[:11]} (Leaf {lid})", "field": field,
+210:                             "clean_mask": clean_mask, "gt_holes": actual_holes, "bbox": (y0, y1, x0, x1)})
+211:             break
+212:         if len(samples) >= 4:
+213:             break
+214: 
+215:     fig, axes = plt.subplots(len(samples), 3, figsize=(11, 3.0 * len(samples)))
+216:     print(f"\n{'샘플명':>26s} | {'실제구멍':>8s} | {'면적필터 탐지(오탐포함)':>20s} | {'Higra TDA 탐지':>14s}")
+217:     print("-" * 78)
+218: 
+219:     for row, s in enumerate(samples):
+220:         area_mask, area_cnt = detect_area_filter_mask(s["field"], s["clean_mask"])
+221:         tda_mask, tda_cnt = detect_higra_tda_mask(s["field"], s["clean_mask"])
+222:         y0, y1, x0, x1 = s["bbox"]
+223: 
+224:         print(f"{s['title']:>26s} | {s['gt_holes']:>7d}개 | {area_cnt:>19d}개 | {tda_cnt:>13d}개")
+225: 
+226:         axes[row, 0].imshow(s["field"][y0:y1, x0:x1], cmap="YlGn")
+227:         axes[row, 0].set_title(f"{s['title']} (True Holes: {s['gt_holes']}, Shadows: 4)")
+228:         axes[row, 0].axis("off")
+229: 
+230:         axes[row, 1].imshow(area_mask[y0:y1, x0:x1], cmap="Reds")
+231:         axes[row, 1].set_title(f"Area Filter >=15px (Detected: {area_cnt})")
+232:         axes[row, 1].axis("off")
+233: 
+234:         axes[row, 2].imshow(tda_mask[y0:y1, x0:x1], cmap="Greens")
+235:         axes[row, 2].set_title(f"Higra Min-Tree TDA (Detected: {tda_cnt})")
+236:         axes[row, 2].axis("off")
+237: 
+238:     plt.tight_layout()
+239:     plt.savefig("real_pest_comparison_fixed.png", dpi=150)
+240:     print("\n★ 최종 수정 시각화 저장 완료: real_pest_comparison_fixed.png")
+241:     plt.show()
+242: 
+243: 
+244: if __name__ == "__main__":
+245:     main()

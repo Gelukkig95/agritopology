@@ -9,15 +9,15 @@ from scipy import ndimage
 from PIL import Image, ImageDraw
 
 # =====================================================================
-# 1. 공간 배경 모델링 기반 위상 포텐셜 (image12 수평선 배경 띠 자동 억제)
+# 1.  Background     (image12  Background   )
 # =====================================================================
 def compute_topological_potential(rgb_arr):
     arr = rgb_arr.astype(np.float32) / 255.0
     H, W, _ = arr.shape
 
-    # 곤충은 중앙부에 위치하고 배경(수평선 띠, 조명 그라데이션)은 가로/세로 저주파 성분을 가짐
-    # 가로 방향 중앙값 프로파일(행별 배경색)과 전체 테두리 배경색을 결합해 2단 배경 추산
-    row_bg = np.median(arr, axis=1, keepdims=True)  #image12 같은 상하 투톤 배경 완벽 제거
+    #    Background( ,  ) /   
+    #   Median ( Background) Total  Background  2 Background 
+    row_bg = np.median(arr, axis=1, keepdims=True)  #image12    Background  
     border_pixels = np.concatenate([
         arr[:4, :, :].reshape(-1, 3),
         arr[-4:, :, :].reshape(-1, 3),
@@ -26,7 +26,7 @@ def compute_topological_potential(rgb_arr):
     ], axis=0)
     global_bg = np.median(border_pixels, axis=0)[None, None, :]
 
-    # 행별 배경 거리와 전역 배경 거리 중 최소값을 취해 배경 띠 오탐 차단
+    #  Background   Background     Background  False Positive 
     dist_row = np.linalg.norm(arr - row_bg, axis=2)
     dist_global = np.linalg.norm(arr - global_bg, axis=2)
     dist = np.minimum(dist_row, dist_global)
@@ -39,7 +39,7 @@ def compute_topological_potential(rgb_arr):
 
 
 # =====================================================================
-# 2. 기존 표준 방식 (Baseline: 로컬 평균 임계값 + 면적 필터)
+# 2.    (Baseline:  Mean  +  )
 # =====================================================================
 def baseline_standard_detector(potential):
     t0 = time.perf_counter()
@@ -56,13 +56,13 @@ def baseline_standard_detector(potential):
 
 
 # =====================================================================
-# 3. 초고속 양자화 Higra Max-Tree + 상호배타적 RCC8 Core-EC 엔진
+# 3.   Higra Max-Tree +  RCC8 Core-EC 
 # =====================================================================
 def topologic_higra_rcc8_detector(potential):
     t0 = time.perf_counter()
     H, W = potential.shape
 
-    # [속도 패치] float64 대신 256단계(uint8 스케일) 양자화로 트리 노드 폭발 방지 (100ms -> 5ms)
+    # [ ] float64  256(uint8 )      (100ms -> 5ms)
     quant_pot = np.round(potential * 255.0).astype(np.float64) / 255.0
 
     graph = hg.get_4_adjacency_graph((H, W))
@@ -75,13 +75,13 @@ def topologic_higra_rcc8_detector(potential):
     min_core_area = max(12, int(H * W * 0.0005))
     max_core_area = int(H * W * 0.35)
 
-    # [Step 1] 고지속성 곤충 몸통 코어(Core) 추출
+    # [Step 1]    (Core) 
     deleted_for_core = (dynamics < rel_dyn_thresh) | (area < min_core_area) | (area > max_core_area)
     core_recon = hg.reconstruct_leaf_data(tree, altitudes, deleted_for_core).reshape(H, W)
     core_thresh = max(0.22, float(np.percentile(quant_pot, 97)) * 0.60)
     core_mask = core_recon > core_thresh
 
-    # 이미지 외곽 테두리에 길게 붙은 배경 잔여물 제거
+    #      Background  
     border_mask = np.zeros((H, W), dtype=bool)
     border_mask[0, :] = border_mask[-1, :] = border_mask[:, 0] = border_mask[:, -1] = True
 
@@ -89,11 +89,11 @@ def topologic_higra_rcc8_detector(potential):
     valid_core_mask = np.zeros((H, W), dtype=bool)
     for c_id in range(1, n_cores + 1):
         c_reg = (labeled_cores == c_id)
-        # 테두리 접촉 픽셀이 30개 이하인 실제 내부 곤충 코어만 인정
+        #    30      
         if (c_reg & border_mask).sum() <= 30:
             valid_core_mask |= c_reg
 
-    # [Step 2] 반투명 날개·가는 다리 지지 영역(Support) 복원
+    # [Step 2]  ·   (Support) 
     deleted_for_support = (area < max(6, min_core_area // 2)) | (area > int(H * W * 0.45))
     support_recon = hg.reconstruct_leaf_data(tree, altitudes, deleted_for_support).reshape(H, W)
     bg_median = float(np.median(quant_pot))
@@ -102,12 +102,12 @@ def topologic_higra_rcc8_detector(potential):
     support_mask = support_recon > support_thresh
     labeled_support, _ = ndimage.label(support_mask)
 
-    # 유효한 몸통(Core)과 연결된 지지 영역만 전체 곤충 마스크로 선택
+    #  (Core)    Total   
     active_s_ids = np.unique(labeled_support[valid_core_mask])
     active_s_ids = active_s_ids[active_s_ids > 0]
     full_mask = np.isin(labeled_support, active_s_ids) | valid_core_mask
 
-    # [핵심 논리 패치] Core와 EC(날개·다리)의 엄밀한 상호배타적 분리 (Core ∩ EC = ∅)
+    # [  ] Core EC(·)    (Core ∩ EC = ∅)
     final_core_mask = valid_core_mask
     final_ec_appendage_mask = full_mask & (~final_core_mask)
 
@@ -116,7 +116,7 @@ def topologic_higra_rcc8_detector(potential):
 
 
 # =====================================================================
-# 4. 실제 .pptx 곤충 사진 6장 검출 및 시각화 이미지(PNG) 갱신
+# 4.  .pptx   6    (PNG) 
 # =====================================================================
 def run_real_pptx_visual_benchmark():
     search_dirs = [os.getcwd(), os.path.expanduser("~/Downloads"), os.path.expanduser("~/Desktop")]
@@ -126,7 +126,7 @@ def run_real_pptx_visual_benchmark():
         pptx_files.extend(glob.glob(os.path.join(d, "*Incremental*.pptx")))
 
     if not pptx_files:
-        print(".pptx 파일을 찾지 못했습니다.")
+        print(".pptx   .")
         return
 
     pptx_path = pptx_files[0]
@@ -144,9 +144,9 @@ def run_real_pptx_visual_benchmark():
 
     target_crops = real_crops[:6]
     print("=" * 86)
-    print(f" [무결성 패치 완료] Core + EC 상호배타 분리 및 투톤 배경 억제 (출처: {os.path.basename(pptx_path)})")
+    print(f" [  ] Core + EC     Background  (: {os.path.basename(pptx_path)})")
     print("=" * 86)
-    print(f"{'파일명':<12} | {'해상도':<9} | {'기존 방식':<10} | {'우리 엔진 전체':<12} | {'몸통(Core) + 날개·다리(EC)':<26} | {'속도'}")
+    print(f"{'':<12} | {'':<9} | {' ':<10} | {'  Total':<12} | {'(Core) + ·(EC)':<26} | {''}")
     print("-" * 86)
 
     thumb_size = 200
@@ -186,7 +186,7 @@ def run_real_pptx_visual_benchmark():
     print("=" * 86)
     out_path = os.path.join(os.getcwd(), "real_insects_comparison.png")
     canvas.save(out_path)
-    print(f"\n★ 갱신된 이미지 저장 완료: {out_path}")
+    print(f"\n★    : {out_path}")
 
 
 if __name__ == "__main__":

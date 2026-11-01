@@ -1,0 +1,404 @@
+=== [1. PTH FILES] ===
+baseline_unet.pth | 7578 KB | 2026-10-18 11:09:23
+softntpp_unet.pth | 7578 KB | 2026-10-18 10:57:23
+topo_exg_unet.pth | 7578 KB | 2026-10-18 19:29:46
+
+=== [2. CODE AUDIT] ===
+
+--- _archive\explore_data.py ---
+L028: unique_vals = np.unique(sem)
+L029: if 2 in unique_vals or 4 in unique_vals:
+L032: print("예시 5개:", weed_files[:5])
+
+--- _archive\feature_combo_experiment.py ---
+L020: vals, counts = np.unique(semantics[mask], return_counts=True)
+L021: majority = vals[np.argmax(counts)]
+L031: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L068: peak_a_val = flat_exg[idx_a].max()
+L069: peak_b_val = flat_exg[idx_b].max()
+L076: peak_drop = ((peak_a_val + peak_b_val) / 2) - merge_alt
+L079: union_area = np.sum(dil_a | dil_b)
+L080: boundary_overlap = overlap_area / union_area if union_area > 0 else 0.0
+L158: auc_single = roc_auc_score(y, X[:, 0])
+L164: probs = clf.predict_proba(X)[:, 1]
+
+--- _archive\maxtree_merge.py ---
+L019: vals, counts = np.unique(semantics[mask], return_counts=True)
+L020: majority = vals[np.argmax(counts)]
+L030: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L130: print(f"U검정: p-value={p:.4f}")
+
+--- _archive\persistence_real_signal.py ---
+L021: vals, counts = np.unique(semantics[mask], return_counts=True)
+L022: majority = vals[np.argmax(counts)]
+L032: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L114: print(f"U검정: p-value={p:.4f}")
+
+--- _archive\persistence_signal.py ---
+L020: vals, counts = np.unique(semantics[mask], return_counts=True)
+L021: majority = vals[np.argmax(counts)]
+L099: print(f"U검정: p-value={p:.4f}")
+
+--- _archive\pest_hole_test.py ---
+L013: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L018: def create_realistic_damaged_leaf(raw_leaf_mask, clean_mask, exg_norm, n_true_holes=3, n_shadow_blobs=0):
+L069: actual_holes = 0
+L070: for _ in range(n_true_holes):
+L077: actual_holes += 1
+L080: for _ in range(n_shadow_blobs):
+L091: return field, actual_holes
+L096: leaf_vals = field[clean_mask > 0]
+L097: thr = float(np.median(leaf_vals) - 0.13)
+L133: valid_nodes = (area >= min_area) & (area <= 350) & (dynamics >= persistence_thr) & (altitudes < leaf_med - 0.20)
+L137: # 조상 중 하나라도 valid_nodes에 속하는 리프(픽셀) 찾기
+L138: node_has_valid_ancestor = valid_nodes.copy()
+L140: if node_has_valid_ancestor[parents[node]]:
+L141: node_has_valid_ancestor[node] = True
+L143: pixel_valid = node_has_valid_ancestor[:tree.num_leaves()].reshape(sub_field.shape)
+L144: basin_mask = (pixel_valid & (sub_mask > 0)).astype(np.uint8)
+L153: files = sorted(os.listdir(leaf_dir))[:80]
+L179: res = create_realistic_damaged_leaf(raw_leaf, clean_mask, exg_norm, n_true_holes=3, n_shadow_blobs=n_stains)
+
+--- _archive\scratch.py ---
+
+
+--- _archive\trademark_engine_eval.py ---
+L008: from sklearn.model_selection import StratifiedKFold, cross_val_predict
+L025: vals, counts = np.unique(semantics[mask], return_counts=True)
+L026: majority = vals[np.argmax(counts)]
+L036: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L061: val_p = flat_exg[idx_p]
+L062: val_c = flat_exg[idx_c]
+L063: peak_p_idx = int(idx_p[np.argmax(val_p)])
+L064: peak_c_idx = int(idx_c[np.argmax(val_c)])
+L084: mean_diff = float(abs(np.mean(val_p) - np.mean(val_c)))
+L169: X_real = np.array([f[:4] for f in real_feats])
+L170: X_fake = np.array([f[:4] for f in fake_feats])
+L175: auc_single = roc_auc_score(y, X[:, 0])
+L179: probs_multi = cross_val_predict(clf, X, y, cv=5, method="predict_proba")[:, 1]
+L203: score_col = X[:, i] if i in (0, 2) else -X[:, i]  # 낙차와 색상차이는 작을수록 한 몸(오탐)
+L207: X_pure_spectral = X[:, [0, 1, 3]]
+L208: probs_pure = cross_val_predict(LogisticRegression(), X_pure_spectral, y, cv=5, method="predict_proba")[:, 1]
+
+--- _archive\train_softntpp.py ---
+L006: from evaluate_baseline import evaluate
+L026: p_crop = probs[:, crop_idx]
+L027: p_weed = probs[:, weed_idx]
+L038: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L040: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L069: torch.save(model.state_dict(), "softntpp_unet.pth")
+L070: print("저장 완료: softntpp_unet.pth")
+L073: evaluate(model, val_loader, device)
+
+--- analyze_results.py ---
+L011: print(f"Chi-square: {chi2:.2f}, p-value: {p:.2e}")
+L019: plt.title("RCC8 Override Risk by Growth Stage\n(Train+Val, n=12,067)")
+
+--- audit_and_cleanup.py ---
+L017: "experiment_val.py",
+L025: "evaluate_baseline.py",
+L026: "posthoc_eval.py",
+L031: "weed_boost_eval.py",
+L032: "pest_hole_final.py",
+L046: "trademark_engine_eval.py",
+L049: "pest_hole_test.py",
+L058: - 데이터셋 경로: `D:\\Download\\PhenoBench-v110\\PhenoBench` (`train` 1,407장 / `val` 772장)
+L062: - `05-15`(초기): **2.7%** (Train 2.8%, Val 2.6%)
+L063: - `05-26`(중기): **12.0%** (Train 12.0%, Val 11.9%)
+L064: - `06-05`(후기): **31.0%** (Train 30.9%, Val 31.3%) -> Chi-square = 1337.12, p = 4.45e-291
+L070: - Baseline (256x256, SEED=42): 잡초 IoU = **0.5672** (Precision 0.7999, Recall 0.6610).
+L072: - 실제 오탐 블롭 720개 전수 해부: **89.0%(641개)가 고립된 DC**, 10.6%(76개)가 EC, **NTPP는 단 0.1%(1개)**. 정답 라벨 기준 **76.8%(553개)가 맨땅(흙)**, 23.2%(167개)가 작물 오인.
+L073: - `filter_scorecard_cv.py` (2-Fold CV 안전 모드): 픽셀 IoU 손실 없이(0.5670) 맨땅 오작동 제거율 단순 필터 대비 **2.24배** 우위.
+L074: - `weed_boost_eval.py` (고정밀 로봇 제어 모드): 로봇 오작동(FP 블롭) **720개 -> 298개 (-58.6% 감축)**, Precision 0.800 -> 0.813 상승.
+
+--- boundary_gradient.py ---
+L020: vals, counts = np.unique(semantics[mask], return_counts=True)
+L021: majority = vals[np.argmax(counts)]
+L046: values = []
+L050: values.append(sobel_mag[yi, xi])
+L051: if not values:
+L053: return float(np.mean(values))
+L095: boundary_intersection = plant_polygons[wid].boundary.intersection(plant_polygons[cid].boundary)
+L096: grad_value = boundary_gradient_strength(boundary_intersection, sobel_mag, gray.shape)
+L097: if grad_value is not None:
+L098: gradients.append(grad_value)
+L140: boundary_intersection = plant_polygons[cid1].boundary.intersection(plant_polygons[cid2].boundary)
+L141: grad_value = boundary_gradient_strength(boundary_intersection, sobel_mag, gray.shape)
+L142: if grad_value is not None:
+L143: gradients.append(grad_value)
+L190: stat, p_value = mannwhitneyu(all_gradients, gradients_0515, alternative='two-sided')
+L191: print(f"\n[05-15 vs 06-05] Mann-Whitney U: statistic={stat:.2f}, p-value={p_value:.4f}")
+L208: stat2, p_value2 = mannwhitneyu(all_gradients, cropcrop_gradients_0605, alternative='two-sided')
+L209: print(f"[작물-작물 vs 잡초-작물, 06-05 내부] U검정: p-value={p_value2:.4f}")
+
+--- core\__init__.py ---
+
+
+--- core\mask_utils.py ---
+L012: coords = largest[:, [1, 0]]
+L014: if not poly.is_valid:
+
+--- core\rcc8.py ---
+L032: if a.boundary.intersects(b.boundary):
+L037: if a.boundary.intersects(b.boundary):
+
+--- diagnose_errors.py ---
+L013: model.eval()
+L050: gt_vals = gt[wmask > 0]
+L051: gt_majority = np.bincount(gt_vals, minlength=3).argmax()
+L075: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L076: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L079: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L081: rel_counts, gt_counts = diagnose_false_positives(model, val_loader, device)
+L082: total = sum(rel_counts.values())
+
+--- evaluate_baseline.py ---
+L009: def evaluate(model, loader, device, num_classes=3):
+L010: model.eval()
+L026: ious = []
+L029: fp = cm[:, c].sum() - tp
+L031: iou = tp / (tp + fp + fn + 1e-6)
+L034: ious.append(iou)
+L035: print(f"{class_names[c]}: IoU={iou:.3f}, Precision={precision:.3f}, Recall={recall:.3f}")
+L037: print(f"mIoU: {np.mean(ious):.3f}")
+L038: return ious, cm
+L043: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L044: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L047: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L049: evaluate(model, val_loader, device)
+
+--- experiment.py ---
+L018: vals, counts = np.unique(semantics[mask], return_counts=True)
+L019: majority = vals[np.argmax(counts)]
+
+--- experiment_val.py ---
+L008: base = r"D:\Download\PhenoBench-v110\PhenoBench\val"   # ← train → val로 변경
+L018: vals, counts = np.unique(semantics[mask], return_counts=True)
+L019: majority = vals[np.argmax(counts)]
+L067: print(f"총 {len(files)}장 처리 시작 (val)")
+L083: print(f"\n=== val 날짜별 위험 비율 ===")
+L088: print(f"\n전체(val): 잡초 {total_weeds}, 위험 {total_risky}, 비율 {total_risky/total_weeds*100:.2f}%")
+
+--- filter_scorecard.py ---
+L020: model.eval()
+L063: gt_vals = gt[wmask > 0]
+L064: gt_majority = np.bincount(gt_vals, minlength=3).argmax()
+L098: def cross_validated_filter(blobs, use_rcc8_branch=True, max_filter_size=30, target_recall=0.96):
+L102: 면적이 큰 블롭(>= max_filter_size)은 픽셀 IoU 손실 방지를 위해 무조건 보존(True)함.
+L118: tr_scores = clf.predict_proba(X_tr)[:, 1]
+L120: t_val = thr[np.argmin(np.abs(tpr - target_recall))]
+L122: te_scores = clf.predict_proba(X_te)[:, 1]
+L124: keep_mask[idx] = bool(te_scores[j] >= t_val)
+L143: tr_scores = clf.predict_proba(X_tr)[:, 1]
+L145: t_val = thr[np.argmin(np.abs(tpr - target_recall))]
+L147: te_scores = clf.predict_proba(X_te)[:, 1]
+L149: keep_mask[idx] = bool(te_scores[j] >= t_val)
+L154: def evaluate_and_print(name, samples, blobs, keep_mask):
+L170: fp = cm[:, c].sum() - tp
+L172: iou = tp / (tp + fp + fn + 1e-6)
+L185: print(f"• 픽셀 지표 (잡초): IoU={iou:.4f} | Precision={precision:.4f} | Recall={recall:.4f}")
+L195: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L196: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L198: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L201: samples, blobs = extract_all(model, val_loader, device)
+L203: evaluate_and_print("0. 보정 없음 (Raw Baseline)", samples, blobs, [True] * len(blobs))
+L205: keep_a = cross_validated_filter(blobs, use_rcc8_branch=False, max_filter_size=30, target_recall=0.96)
+L206: evaluate_and_print("1. 전략 A (2-Fold CV, 소형블롭 크기+확신도만)", samples, blobs, keep_a)
+L208: keep_b = cross_validated_filter(blobs, use_rcc8_branch=True, max_filter_size=30, target_recall=0.96)
+L209: evaluate_and_print("2. 전략 B (2-Fold CV, 소형블롭 RCC8 분기 + ExG + 주변작물확률)", samples, blobs, keep_b)
+
+--- final_gate_experiment.py ---
+L021: vals, counts = np.unique(semantics[mask], return_counts=True)
+L022: majority = vals[np.argmax(counts)]
+L032: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L096: val = merge_altitude_from_masks(tree, altitudes, flat_exg, masks[wid], masks[cid])
+L097: if val is not None and val > 0:
+L098: real_scores.append(val)
+L107: val = merge_altitude_from_masks(tree, altitudes, flat_exg, fake_weed, masks[cid])
+L108: if val is not None and val > 0:
+L109: fake_scores.append(val)
+
+--- injection_experiment.py ---
+L018: vals, counts = np.unique(semantics[mask], return_counts=True)
+L019: majority = vals[np.argmax(counts)]
+L108: files_0515 = [f for f in all_files if f.split("_")[0] == "05-15"][:100]
+L109: files_0605 = [f for f in all_files if f.split("_")[0] == "06-05"][:100]
+
+--- leaf_and_weed_upgrade.py ---
+L022: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L080: valid_nodes = (area >= 8) & (area <= 2500) & (dynamics >= 0.085) & (altitudes >= 0.15)
+L083: node_has_valid_ancestor = valid_nodes.copy()
+L085: if node_has_valid_ancestor[parents[node]]:
+L086: node_has_valid_ancestor[node] = True
+L088: pixel_peaks = node_has_valid_ancestor[:tree.num_leaves()].reshape(topo_field.shape)
+L103: date_files = [f for f in files if f.startswith(date_str)][:40]
+L147: # PART 2: 잡초 픽셀 IoU 직접 상승 + 오작동 블롭 제거 (데이터 누출 0% 2-Fold CV)
+L155: def run_weed_iou_and_kpi_upgrade():
+L157: print("[실험 2] 2-Fold CV 잡초 픽셀 IoU 순증가 + 로봇 오작동 블롭 제거 동시 달성")
+L160: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L161: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=0)
+L164: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L165: model.eval()
+L171: for imgs, labels in val_loader:
+L227: # 2-Fold 교차검증: 픽셀 IoU 손익분기 조건(확실한 오탐만 정밀 타격) 학습
+L246: tr_probs = clf.predict_proba(X_tr)[:, 1]
+L247: te_probs = clf.predict_proba(X_te)[:, 1]
+L298: ("1. RCC8 IoU-최적 오탐 제거 (2-Fold CV)", pruned_preds, fp_kept),
+L304: tp, fp, fn = cm[c, c], cm[:, c].sum() - cm[c, c], cm[c, :].sum() - cm[c, c]
+L305: iou = tp / (tp + fp + fn + 1e-6)
+L310: print(f"  • 잡초 픽셀 지표 : IoU = {iou:.4f} | Precision = {prec:.4f} | Recall = {rec:.4f}")
+L316: run_weed_iou_and_kpi_upgrade()
+
+--- maxtree_higra.py ---
+L023: vals, counts = np.unique(semantics[mask], return_counts=True)
+L024: majority = vals[np.argmax(counts)]
+L034: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L096: val = maxtree_merge_altitude(tree, altitudes, flat_exg, masks[cid1], masks[cid2])
+L097: if val is not None and val > 0:
+L098: scores.append(val)
+L104: val = maxtree_merge_altitude(tree, altitudes, flat_exg, masks[wid], masks[cid])
+L105: if val is not None and val > 0:
+L106: scores.append(val)
+L131: print(f"U검정: p-value={p:.4f}")
+
+--- pest_hole_final.py ---
+L014: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L019: def inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4):
+L062: actual_holes = 0
+L063: for _ in range(n_holes):
+L071: actual_holes += 1
+L073: for _ in range(n_shadows):
+L084: return field, gt_mask, actual_holes
+L088: leaf_vals = field[clean_mask > 0]
+L089: thr = float(np.median(leaf_vals) - 0.13)
+L118: valid_nodes = (area >= min_area) & (area <= 350) & (dynamics >= persistence_thr) & (altitudes < leaf_med - 0.20)
+L121: node_has_valid_ancestor = valid_nodes.copy()
+L123: if node_has_valid_ancestor[parents[node]]:
+L124: node_has_valid_ancestor[node] = True
+L126: pixel_valid = node_has_valid_ancestor[:tree.num_leaves()].reshape(sub_field.shape)
+L127: basin_sub = (pixel_valid & (sub_mask > 0)).astype(np.uint8)
+L145: files_0605 = [f for f in all_files if f.startswith("06-05")][:80]
+L167: res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=n_stains)
+L188: for fname in files_0605[:50]:
+L202: res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4)
+L205: field, gt_mask, actual_holes = res
+L209: samples.append({"title": f"{fname[:11]} (Leaf {lid})", "field": field,
+L210: "clean_mask": clean_mask, "gt_holes": actual_holes, "bbox": (y0, y1, x0, x1)})
+L224: print(f"{s['title']:>26s} | {s['gt_holes']:>7d}개 | {area_cnt:>19d}개 | {tda_cnt:>13d}개")
+L227: axes[row, 0].set_title(f"{s['title']} (True Holes: {s['gt_holes']}, Shadows: 4)")
+
+--- posthoc_eval.py ---
+L056: ious = []
+L059: fp = cm[:, c].sum() - tp
+L061: iou = tp / (tp + fp + fn + 1e-6)
+L064: ious.append(iou)
+L065: print(f"{class_names[c]}: IoU={iou:.3f}, Precision={precision:.3f}, Recall={recall:.3f}")
+L066: print(f"mIoU: {np.mean(ious):.3f}")
+L067: return ious
+L070: def evaluate_with_posthoc(model, loader, device):
+L071: model.eval()
+L110: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L111: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L114: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L116: evaluate_with_posthoc(model, val_loader, device)
+
+--- real_pest_demo.py ---
+L014: b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
+L019: def inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4):
+L066: actual_holes = 0
+L067: for _ in range(n_holes):
+L075: actual_holes += 1
+L077: for _ in range(n_shadows):
+L088: return field, gt_mask, actual_holes
+L092: leaf_vals = field[clean_mask > 0]
+L093: thr = float(np.median(leaf_vals) - 0.13)
+L121: valid_nodes = (area >= min_area) & (area <= 350) & (dynamics >= persistence_thr) & (altitudes < leaf_med - 0.18)
+L124: node_has_valid_ancestor = valid_nodes.copy()
+L126: if node_has_valid_ancestor[parents[node]]:
+L127: node_has_valid_ancestor[node] = True
+L129: pixel_valid = node_has_valid_ancestor[:tree.num_leaves()].reshape(sub_field.shape)
+L130: basin_sub = (pixel_valid & (sub_mask > 0)).astype(np.uint8)
+L148: files_80 = all_files[:80]
+L173: res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=n_stains)
+L194: files_0605 = [f for f in all_files if f.startswith("06-05")][:50]
+L211: res = inject_realistic_damage_on_real_leaf(raw_leaf, clean_mask, exg_norm, n_holes=3, n_shadows=4)
+L214: field, gt_mask, actual_holes = res
+L221: "title": f"{fname[:11]} (Leaf {lid})",
+L225: "gt_holes": actual_holes,
+L241: print(f"{s['title']:>26s} | {s['gt_holes']:>7d}개 | {area_cnt:>19d}개 | {tda_cnt:>13d}개")
+L244: axes[row, 0].set_title(f"{s['title']} (True Holes: {s['gt_holes']}, Shadows: 4)")
+
+--- relation_types.py ---
+L018: vals, counts = np.unique(semantics[mask], return_counts=True)
+L019: majority = vals[np.argmax(counts)]
+
+--- test\test_rcc8.py ---
+
+
+--- train_baseline.py ---
+L041: semantics = cv2.resize(semantics, (self.img_size, self.img_size), interpolation=cv2.INTER_NEAREST)
+L088: intersection = torch.sum(probs * target_onehot, dims)
+L090: dice = (2. * intersection + eps) / (cardinality + eps)
+L099: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L101: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L119: torch.save(model.state_dict(), "baseline_unet.pth")
+L120: print("저장 완료: baseline_unet.pth")
+
+--- train_topo_exg_loss.py ---
+L040: p_crop = probs[:, 1]
+L041: p_weed = probs[:, 2]
+L043: r, g, b = imgs[:, 0], imgs[:, 1], imgs[:, 2]
+L068: def evaluate_pixel_and_blobs(name, model, loader, device, min_size=5):
+L069: model.eval()
+L104: ious = []
+L107: fp = cm[:, c].sum() - tp
+L109: iou = tp / (tp + fp + fn + 1e-6)
+L112: ious.append(iou)
+L113: print(f"  {cname}: IoU={iou:.4f} | Precision={prec:.4f} | Recall={rec:.4f}")
+L114: print(f"  mIoU: {np.mean(ious):.4f}")
+L123: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L124: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L128: base_model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L129: evaluate_pixel_and_blobs("0. 기존 Baseline U-Net 단독 (CE + Dice)", base_model, val_loader, device)
+L161: torch.save(model.state_dict(), "topo_exg_unet.pth")
+L162: evaluate_pixel_and_blobs("1. ★ Topo-ExG Loss 통합 U-Net (추론 추가시간 0.0ms)", model, val_loader, device)
+
+--- verify_practical_kpi.py ---
+L018: model.eval()
+L059: gt_vals = gt[wmask > 0]
+L060: gt_majority = np.bincount(gt_vals, minlength=3).argmax()
+L112: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L113: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L116: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L118: groups = analyze_blobs(model, val_loader, device)
+
+--- vsa_experiment.py ---
+L050: def quantize(self, val, vmin, vmax):
+L051: norm = np.clip((val - vmin) / (vmax - vmin + 1e-8), 0.0, 1.0)
+L089: model.eval()
+L160: def evaluate_and_print(name, samples, blobs, keep_mask):
+L174: tp, fp, fn = cm[c, c], cm[:, c].sum() - cm[c, c], cm[c, :].sum() - cm[c, c]
+L175: iou = tp / (tp + fp + fn + 1e-6)
+L186: print(f"  • 픽셀 지표 (잡초): IoU={iou:.4f} | Precision={prec:.4f} | Recall={rec:.4f}")
+L193: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L194: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L196: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L199: samples, blobs = extract_all(model, val_loader, device)
+L224: t_val = thr[np.argmin(np.abs(tpr - 0.96))]
+L229: keep_vsa[idx] = bool(sc >= t_val)
+L233: evaluate_and_print("0. 보정 없음 (Raw Baseline)", samples, blobs, [True] * len(blobs))
+L234: evaluate_and_print("1. ★ 순수 10,000차원 VSA (if-else 분기 0개, 학습 0회, 2-Fold CV)", samples, blobs, keep_vsa)
+
+--- weed_boost_eval.py ---
+L018: def evaluate_predictions(name, all_labels, all_preds, fp_Before=None, fp_After=None):
+L022: fp = cm[:, c].sum() - tp
+L024: iou = tp / (tp + fp + fn + 1e-6)
+L029: print(f"• 잡초 픽셀 지표: IoU={iou:.4f} | Precision={precision:.4f} | Recall={recall:.4f}")
+L037: val_ds = PhenoBenchDataset(BASE_DIR, "val", IMG_SIZE)
+L038: val_loader = DataLoader(val_ds, batch_size=8, shuffle=False, num_workers=2)
+L041: model.load_state_dict(torch.load("baseline_unet.pth", map_location=device))
+L042: model.eval()
+L051: for imgs, labels in val_loader:
+L142: evaluate_predictions("0. 보정 없음 (Raw Baseline)", all_labels, np.concatenate(raw_preds_list))
+L143: evaluate_predictions("1. 소형 블롭 타겟 RCC8+ExG 안전 필터 (오작동 제거)",
+L145: evaluate_predictions("2. ★ 안전 필터 + 위상 테두리 복구 (오작동 제거 + IoU 상승)",
